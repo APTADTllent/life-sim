@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LIFE SIM · 诊室模式 2.5</title>
+<link rel="stylesheet" href="css/app.css?v=265">
+<link rel="stylesheet" href="css/account.css?v=265">
+<link rel="stylesheet" href="css/clinic.css?v=265">
+</head>
+<body>
+
+<div id="boot" class="boot">
+  <div class="boot-inner">
+    <div class="boot-logo">LIFE<span>SIM</span></div>
+    <div class="boot-sub">器官耦合 · 药理动力学 · 术中风险 实时模拟引擎 · 诊室 v2.5</div>
+    <div class="boot-clinic">诊室模式 · 白班 48 分钟 / 夜班 48 分钟 · 每日经费 ¥12,000 · 休息 2–8 分钟（不计入上班时间）<br>药品 + 手术耗材库存与采购 · 医誉等级享折扣与高峰期优先配送 · 病人类型全部随机</div>
+    <div class="boot-field acct-boot-field">
+      <label>医师账号（本机保存 · 医誉系统）</label>
+      <div class="boot-acct-line"><b id="bootAcctName">游客模式</b><button id="bootAcctBtn" class="btn ghost boot-acct-btn">登录 / 注册</button></div>
+      <div class="boot-acct-hint" id="bootAcctHint">登录后战绩、医誉与门诊进度都按账号保存；未登录只存游客档案</div>
+      <label class="acct-keep" style="margin-top:7px"><input type="checkbox" id="bootKeep"> 保持账号（12 小时内再次打开免密进入）</label>
+    </div>
+    <div class="boot-field">
+      <label>医生姓名（用于签署死亡证明）</label>
+      <input id="bootDoctor" type="text" value="Dr. 林" maxlength="16" autocomplete="off">
+    </div>
+    <div class="boot-field">
+      <label>职称 —— 决定难度</label>
+      <div class="rank-list" id="bootDiff"></div>
+    </div>
+    <div class="boot-field">
+      <label>接诊类型</label>
+      <div class="boot-random">全部随机 · 按白班 / 夜班分布抽病例（白班普通病与中暑多，夜班危重多）</div>
+    </div>
+    <button id="bootStart" class="btn-main">开始今天的门诊</button>
+    <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;font-size:12px">
+      <button id="langZh" class="btn ghost" style="padding:6px 14px">中文</button>
+      <button id="langEn" class="btn ghost" style="padding:6px 14px">English</button>
+    </div>
+    <div class="boot-tip">提示：诊室每个班次 <b>48 分钟</b>，每位病人结束后休息 <b>2–8 分钟</b>（休息不计入上班时间）；白班 / 夜班各 48 分钟交替。<br>常用药初始 40 份、其他药 10 份、手术耗材 4 份；每天 ¥12,000 经费，可在「药房」采购药品与耗材，1–5 分钟送达（医誉越高越快，白班高峰期优先配送）。<br>心电图波形可 <b>双击放大</b> 查看全 12 导联；生命体征消失后 4 分钟宣告死亡。</div>
+    <div id="bootError" class="boot-error hidden"></div>
+  </div>
+</div>
+
+<div id="app" class="app hidden">
+
+  <header id="topbar">
+    <div class="tb-left">
+      <div class="logo">LIFE<span>SIM</span></div>
+      <div class="pt-card">
+        <div class="pt-line1"><span id="ptBed">急诊 03 床</span><b id="ptName">—</b><span id="ptDemo">—</span></div>
+        <div class="pt-line2"><span class="tag" id="ptBlood">血型 —</span><span class="tag" id="ptAllergy">过敏史 —</span></div>
+      </div>
+    </div>
+
+    <button id="btnSearch" class="search-trigger">
+      <span class="st-ico">⌕</span>
+      <span class="st-txt">检索药品 / 指南 / 操作</span>
+      <kbd>Ctrl K</kbd>
+    </button>
+
+    <div class="tb-center">
+      <div id="simClock" class="sim-clock">--:--:--</div>
+      <div class="seg speed" id="speedSeg">
+        <button data-s="0">❚❚</button>
+        <button data-s="1" class="on">1×</button>
+        <button data-s="2">2×</button>
+        <button data-s="4">4×</button>
+        <button data-s="8">8×</button>
+      </div>
+      <div id="elapsed" class="elapsed">病程 00:00</div>
+    </div>
+
+    <div class="tb-right">
+      <button id="acctChip" class="acct-chip" title="医师账号 / 医誉">
+        <span class="acct-ico">⚕</span><b id="acctNameTop">游客</b><span id="acctRepTop" class="acct-rep-top">见习医士</span>
+      </button>
+      <div class="doc">
+        <span id="docRank">—</span>
+        <b id="docName">—</b>
+        <em id="docStats">—</em>
+      </div>
+      <div class="vol" title="监护仪音量（心搏音与报警音）">
+        <button id="btnMute" class="btn-ghost vol-btn" title="静音 / 取消静音">🔊</button>
+        <input id="volRange" class="vol-range" type="range" min="0" max="100" step="1" value="45" aria-label="音量">
+      </div>
+      <button id="langBtn" class="btn-ghost" title="Language / 语言">EN</button>
+      <button id="btnHelp" class="btn-ghost" title="帮助">?</button>
+      <button id="btnRestart" class="btn-ghost" title="重新接诊">↻</button>
+    </div>
+  </header>
+
+  <div id="clinicBar" class="clinic-bar hidden">
+    <span class="cb-brand">诊室</span>
+    <span class="cb-day" id="cbDay">第 1 天</span>
+    <span class="cb-shift day" id="cbShift">白班</span>
+    <span class="cb-time" id="cbTime">48:00</span>
+    <div class="cb-track"><i id="cbProg"></i></div>
+    <span class="cb-budget">经费 <b id="cbBudget">¥12,000</b></span>
+    <span class="cb-rep" id="cbRep">见习医士 · 医誉 0</span>
+    <span class="cb-queue" id="cbQueue">候诊 0</span>
+    <span class="cb-status" id="cbStatus">准备接诊</span>
+    <span class="cb-low hidden" id="cbLow"></span>
+    <span class="cb-spacer"></span>
+    <button class="cb-btn" id="btnQueue">候诊区</button>
+    <button class="cb-btn" id="btnNews">新闻</button><button class="cb-btn" id="btnPharmacy">药房 / 库存</button>
+    <button class="cb-btn primary hidden" id="btnNext">接诊下一位 →</button>
+    <button class="cb-btn hidden" id="btnSkipRest">跳过休息</button>
+  </div>
+
+  <div id="restOverlay" class="rest-overlay hidden">
+    <div class="rest-card">
+      <div class="rest-kicker">REST · 休息</div>
+      <div class="rest-title">下一位病人即将到达</div>
+      <div class="rest-time" id="restTime">00:00</div>
+      <div class="rest-sub" id="restSub">本班剩余 48:00</div>
+      <div class="rest-actions"><button class="btn warn" id="btnRestSkip">跳过休息</button><button class="btn ghost" id="btnRestQueue">查看候诊</button><button class="btn ghost" id="btnRestNews">看新闻</button></div>
+    </div>
+  </div>
+
+  <div id="codeBar" class="code-bar hidden">
+    <span class="blink">●</span>
+    <b id="codeText">无生命体征</b>
+    <span id="codeTimer">04:00</span>
+    <span class="code-hint">立即开始 CPR / 除颤 / 肾上腺素，否则 4 分钟后宣告死亡</span>
+  </div>
+
+  <div id="probBar" class="prob-bar hidden">
+    <span class="pb-ico">⚠</span>
+    <b id="probText">—</b>
+    <span id="probMore" class="pb-more"></span>
+    <button id="probOpen" class="pb-open">查看处置建议</button>
+  </div>
+
+  <main id="main">
+
+    <section id="monitorCol" class="panel col-monitor">
+      <div class="panel-head">
+        <h3>监护波形</h3>
+        <span class="hint">双击 ECG 放大 12 导联</span>
+        <button class="fold" data-fold="monitorCol" title="折叠 / 展开">⌄</button>
+      </div>
+      <div class="wave-list" id="waveList"></div>
+    </section>
+
+    <section id="vitalsCol" class="col-vitals">
+      <div class="panel grow">
+        <div class="panel-head">
+          <h3>生命体征</h3>
+          <div class="mini-tabs" id="vitalTabs">
+            <button data-g="circ" class="on">循环</button>
+            <button data-g="resp">呼吸</button>
+            <button data-g="neuro">神经</button>
+            <button data-g="meta">内环境</button>
+            <button data-g="organ">器官·血液</button>
+          </div>
+        </div>
+        <div class="scroll" id="vitalPaneWrap"></div>
+      </div>
+    </section>
+
+    <aside id="rightCol" class="col-right">
+      <div class="panel disease-panel" id="diseasePanel">
+        <div class="panel-head">
+          <h3>疾病状态</h3>
+          <span class="triage" id="triageBadge">—</span>
+          <button class="fold" data-fold="diseasePanel" title="折叠 / 展开">⌄</button>
+        </div>
+        <div id="diseaseBody"></div>
+      </div>
+
+      <div class="panel grow">
+        <div class="tabs" id="rightTabs">
+          <button data-t="guide" class="on">指南</button>
+          <button data-t="drug">药品</button>
+          <button data-t="symptom">症状<i id="symCount">0</i></button>
+          <button data-t="rx">处方<i id="rxCount">0</i></button>
+          <button data-t="exam">检查</button>
+          <button data-t="log">日志</button>
+        </div>
+        <div class="pane-wrap" id="paneWrap">
+
+          <div class="tab-pane hidden" data-p="guide">
+            <div class="scroll" id="guideBody"></div>
+          </div>
+
+          <div class="tab-pane" data-p="drug">
+            <div class="drug-lib">
+              <div class="drug-lib-top">
+                <input id="drugSearch" type="search" placeholder="搜索药名 / 别名 / 分类 / 靶点…" autocomplete="off">
+                <span id="drugCount" class="hint">0</span>
+              </div>
+              <div class="drug-lib-list" id="drugList"></div>
+            </div>
+          </div>
+
+          <div class="tab-pane hidden" data-p="symptom"><div class="scroll" id="symptomBody"></div></div>
+          <div class="tab-pane hidden" data-p="rx"><div class="scroll" id="rxBody"></div></div>
+          <div class="tab-pane hidden" data-p="exam"><div class="scroll" id="examBody"></div></div>
+          <div class="tab-pane hidden" data-p="log"><div class="scroll" id="logBody"></div></div>
+        </div>
+      </div>
+    </aside>
+
+  </main>
+
+  <footer id="actionbar" class="actionbar">
+    <button class="act" data-act="guide" title="当前病例分步指南 + 临床指南手册（快捷键 G）"><i>?</i><span>处理指南</span></button>
+    <button class="act surg" data-act="surgery" title="选择手术部位与术式（快捷键 S）"><i>✚</i><span>手术 · 术式</span></button>
+    <button class="act" data-act="transfuse" title="输血与交叉配血（快捷键 T）"><i>◍</i><span>输血</span></button>
+    <button class="act" data-act="bleed" title="放血 / 血液置换：按设定速率抽出血液直到目标剩余量（快捷键 B）"><i>◔</i><span>放血</span></button>
+    <button class="act" data-act="shock" title="电击除颤 / 同步电复律（快捷键 F）"><i>⚡</i><span>电击除颤</span></button>
+    <button class="act" data-act="cpr" title="开始 / 停止胸外按压（快捷键 C）"><i>✋</i><span>胸外按压</span></button>
+    <button class="act" data-act="airway" title="气道与氧疗（快捷键 A）"><i>◠</i><span>气道 / 氧疗</span></button>
+    <button class="act" data-act="examine" title="检查中心：体格检查、化验、影像、器官功能概览（快捷键 E）"><i>⌕</i><span>检查 / 化验</span></button>
+    <button class="act" data-act="nurse" title="护理处置"><i>≡</i><span>护理处置</span></button>
+    <button class="act" data-act="trend" title="生命体征趋势曲线与事件标记（快捷键 R）"><i>∿</i><span>趋势曲线</span></button>
+    <div class="ab-right">
+      <span class="hint"><kbd>Ctrl K</kbd> 全局检索 · <kbd>G</kbd> 处理指南 · <kbd>R</kbd> 趋势</span>
+    </div>
+  </footer>
+
+  <div id="toasts" class="toasts"></div>
+  <div id="dayOverlay" class="day-overlay hidden"><div class="day-card" id="dayCard"></div></div>
+</div>
+
+<div id="palette" class="palette hidden">
+  <div class="palette-box">
+    <div class="palette-input">
+      <span class="pi-ico">⌕</span>
+      <input id="paletteInput" type="text" placeholder="输入药品名、指南、操作或体征分组…" autocomplete="off" spellcheck="false">
+      <button id="paletteClose" class="close-x">✕</button>
+    </div>
+    <div id="paletteList" class="palette-list"></div>
+    <div class="palette-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
+      <span><kbd>Enter</kbd> 执行</span>
+      <span><kbd>Esc</kbd> 关闭</span>
+      <span class="pf-right" id="paletteCount"></span>
+    </div>
+  </div>
+</div>
+
+<div id="modalRoot" class="modal-root hidden"></div>
+<div id="fatal" class="fatal hidden"></div>
+
+<script src="js/data-drugs.js?v=265"></script>
+<script src="js/data-drugs2.js?v=265"></script>
+<script src="js/data-drugs3.js?v=265"></script>
+<script src="js/data-stock.js?v=265"></script>
+<script src="js/data-drugs4.js?v=265"></script>
+<script src="js/data-drugs5.js?v=265"></script>
+<script src="js/data-diseases.js?v=265"></script>
+<script src="js/data-diseases2.js?v=265"></script>
+<script src="js/data-surgery.js?v=265"></script>
+<script src="js/data-guide.js?v=265"></script>
+<script src="js/engine.js?v=265"></script>
+  <script src="js/news.js?v=265"></script>
+<script src="js/ecg.js?v=265"></script>
+<script src="js/exam.js?v=265"></script>
+<script src="js/i18n.js?v=267"></script>
+<script src="js/audio.js?v=265"></script>
+<script src="js/ui.js?v=265"></script>
+<script src="js/main.js?v=265"></script>
+<script src="js/account.js?v=265"></script>
+<script src="js/clinic.js?v=265"></script>
+<script src="js/interactions.js?v=265"></script>
+</body>
+</html>
